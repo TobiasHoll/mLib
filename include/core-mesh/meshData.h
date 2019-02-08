@@ -400,6 +400,7 @@ public:
 
 
 	MeshData() {}
+	MeshData(const MeshData&) = default;
 	MeshData(MeshData&& d) {
 		m_Vertices = std::move(d.m_Vertices);
 		m_Normals = std::move(d.m_Normals);
@@ -413,9 +414,8 @@ public:
 		m_indicesByMaterial = std::move(d.m_indicesByMaterial);
 		m_indicesByGroup = std::move(d.m_indicesByGroup);
 	}
-	MeshData(const MeshData& m) = default;
 	MeshData& operator=(const MeshData&) = default;
-	void operator=(MeshData&& d) {
+	MeshData& operator=(MeshData&& d) {
 		m_Vertices = std::move(d.m_Vertices);
 		m_Normals = std::move(d.m_Normals);
 		m_TextureCoords = std::move(d.m_TextureCoords);
@@ -427,6 +427,7 @@ public:
 		m_materialFile = std::move(d.m_materialFile);
 		m_indicesByMaterial = std::move(d.m_indicesByMaterial);
 		m_indicesByGroup = std::move(d.m_indicesByGroup);
+		return *this;
 	}
 	void clear() {
 		m_Vertices.clear();

@@ -1750,8 +1750,8 @@ namespace ml {
 						m_bTerminateThread = true;	// should be already true anyway
 						break; //we're done
 					}
+					m_mutexList.lock();
 					if (m_data.size() > 0 && m_data.front().m_bIsReady) {
-						m_mutexList.lock();
 						FrameState fs = m_data.front();
 						m_data.pop_front();
 						m_mutexList.unlock();
@@ -1759,6 +1759,7 @@ namespace ml {
 						return fs;
 					}
 					else {
+						m_mutexList.unlock();
 						#ifdef _WIN32
 						Sleep(0);
 						#endif
@@ -1777,14 +1778,14 @@ namespace ml {
 					if (cache->m_bTerminateThread) break;
 					if (cache->m_nextFromSensorData >= cache->m_sensorData->m_frames.size()) break;	//we're done
 
+					cache->m_mutexList.lock(); // Need to lock before calling size(), technically a race!
 					if (cache->m_data.size() < cache->m_cacheSize) {	//need to fill the cache
-						cache->m_mutexList.lock();
 						cache->m_data.push_back(FrameState());
+						FrameState& fs = cache->m_data.back();
 						cache->m_mutexList.unlock();
 
 						SensorData* sensorData = cache->m_sensorData;
 						SensorData::RGBDFrame& frame = sensorData->m_frames[cache->m_nextFromSensorData];
-						FrameState& fs = cache->m_data.back();
 
 						//std::cout << "decompressing frame " << cache->m_nextFromSensorData << std::endl;
 						fs.m_colorFrame = sensorData->decompressColorAlloc(frame);
@@ -1794,6 +1795,7 @@ namespace ml {
 						fs.m_bIsReady = true;
 						cache->m_nextFromSensorData++;
 					}
+					else cache->m_mutexList.unlock();
 				}
 			}
 

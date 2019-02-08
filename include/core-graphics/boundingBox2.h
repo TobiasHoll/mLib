@@ -18,6 +18,25 @@ namespace ml {
 	class BoundingBox2
 	{
 	public:
+		BoundingBox2(const BoundingBox2<FloatType>& other) {
+			for (size_t i = 0; i < 4; ++i)
+				parameters[i] = other.parameters[i];
+		}
+		BoundingBox2(BoundingBox2<FloatType>&& other) {
+			for (size_t i = 0; i < 4; ++i)
+				parameters[i] = other.parameters[i];
+		}
+
+		BoundingBox2& operator=(const BoundingBox2<FloatType>& other) {
+			for (size_t i = 0; i < 4; ++i)
+				parameters[i] = other.parameters[i];
+			return *this;
+		}
+		BoundingBox2& operator=(BoundingBox2<FloatType>&& other) {
+			for (size_t i = 0; i < 4; ++i)
+				parameters[i] = other.parameters[i];
+			return *this;
+		}
 
 		BoundingBox2(void) {
 			reset();
@@ -260,12 +279,6 @@ namespace ml {
 		void setUnitCube() {
 			minX = minY = 0;
 			maxX = maxY = 1;
-		}
-
-		BoundingBox2<FloatType>& operator = (const BoundingBox2<FloatType> &b) {
-			for (int i = 0; i < 4; i++)
-				parameters[i] = b.parameters[i];
-			return *this;
 		}
 	protected:
 		union {
