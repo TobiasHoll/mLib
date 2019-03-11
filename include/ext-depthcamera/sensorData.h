@@ -1703,6 +1703,13 @@ namespace ml {
 					m_timeStampDepth = 0;
 					m_timeStampColor = 0;
 				}
+				FrameState(const FrameState& other)
+					: m_bIsReady(other.m_bIsReady.load())
+					, m_colorFrame(other.m_colorFrame)
+					, m_depthFrame(other.m_depthFrame)
+					, m_timeStampDepth(other.m_timeStampDepth)
+					, m_timeStampColor(other.m_timeStampColor)
+				{}
 				~FrameState() {
 					//NEEDS MANUAL FREE
 				}
@@ -1718,7 +1725,7 @@ namespace ml {
 					m_timeStampDepth = 0;
 					m_timeStampColor = 0;
 				}
-				bool			m_bIsReady;
+				std::atomic<bool> m_bIsReady;
 				vec3uc*			m_colorFrame;
 				unsigned short*	m_depthFrame;
 				UINT64			m_timeStampDepth;
@@ -1746,16 +1753,19 @@ namespace ml {
 
 			FrameState getNext() {
 				while (1) {
+					m_mutexList.lock();
 					if (m_nextFromSensorCache >= m_sensorData->m_frames.size()) {
 						m_bTerminateThread = true;	// should be already true anyway
+						m_mutexList.unlock();
 						break; //we're done
 					}
-					m_mutexList.lock();
 					if (m_data.size() > 0 && m_data.front().m_bIsReady) {
+						if (m_nextFromSensorData.load() <= m_nextFromSensorCache)
+							fprintf(stderr, "Warning: Overtaking decompression!\n");
 						FrameState fs = m_data.front();
 						m_data.pop_front();
-						m_mutexList.unlock();
 						m_nextFromSensorCache++;
+						m_mutexList.unlock();
 						return fs;
 					}
 					else {
@@ -1776,16 +1786,19 @@ namespace ml {
 			static void decompFunc(RGBDFrameCacheRead* cache) {
 				while (1) {
 					if (cache->m_bTerminateThread) break;
-					if (cache->m_nextFromSensorData >= cache->m_sensorData->m_frames.size()) break;	//we're done
 
-					cache->m_mutexList.lock(); // Need to lock before calling size(), technically a race!
-					if (cache->m_data.size() < cache->m_cacheSize) {	//need to fill the cache
+					cache->m_mutexList.lock(); // Need to lock before calling size(), technically a race
+					if (cache->m_nextFromSensorData >= cache->m_sensorData->m_frames.size()) { //we're done
+						cache->m_mutexList.unlock();
+						break;
+					}
+					else if (cache->m_data.size() < cache->m_cacheSize) {	//need to fill the cache
 						cache->m_data.push_back(FrameState());
 						FrameState& fs = cache->m_data.back();
-						cache->m_mutexList.unlock();
 
 						SensorData* sensorData = cache->m_sensorData;
 						SensorData::RGBDFrame& frame = sensorData->m_frames[cache->m_nextFromSensorData];
+						cache->m_mutexList.unlock();
 
 						//std::cout << "decompressing frame " << cache->m_nextFromSensorData << std::endl;
 						fs.m_colorFrame = sensorData->decompressColorAlloc(frame);
@@ -1807,8 +1820,8 @@ namespace ml {
 			std::mutex m_mutexList;
 			std::atomic<bool> m_bTerminateThread;
 
-			unsigned int m_nextFromSensorData;
-			unsigned int m_nextFromSensorCache;
+			std::atomic<unsigned int> m_nextFromSensorData;
+			std::atomic<unsigned int> m_nextFromSensorCache;
 		};
 
 		class RGBDFrameCacheWrite {
@@ -1821,6 +1834,13 @@ namespace ml {
 					m_timeStampDepth = 0;
 					m_timeStampColor = 0;
 				}
+				FrameState(const FrameState& other)
+					: m_bIsReady(other.m_bIsReady.load())
+					, m_colorFrame(other.m_colorFrame)
+					, m_depthFrame(other.m_depthFrame)
+					, m_timeStampDepth(other.m_timeStampDepth)
+					, m_timeStampColor(other.m_timeStampColor)
+				{}
 				~FrameState() {
 					//NEEDS MANUAL FREE
 				}
@@ -1836,7 +1856,7 @@ namespace ml {
 					m_timeStampDepth = 0;
 					m_timeStampColor = 0;
 				}
-				bool			m_bIsReady;
+				std::atomic<bool> m_bIsReady;
 				vec3uc*			m_colorFrame;
 				unsigned short*	m_depthFrame;
 				UINT64			m_timeStampDepth;
@@ -1868,12 +1888,14 @@ namespace ml {
 				fs.m_depthFrame = depth;
 				fs.m_timeStampColor = timeStampColor;
 				fs.m_timeStampDepth = timeStampDepth;
+				m_mutexList.lock();
 				while (m_data.size() >= m_cacheSize) {
+					m_mutexList.unlock();
 					#ifdef _WIN32
 					Sleep(0);	//wait until we have space in our cache
 				    #endif
+					m_mutexList.lock();
 				}
-				m_mutexList.lock();
 				m_data.push_back(fs);
 				m_mutexList.unlock();
 			}
@@ -1885,10 +1907,13 @@ namespace ml {
 
 			static void compFunc(RGBDFrameCacheWrite* cache) {
 				while (1) {
-					if (cache->m_bTerminateThread && cache->m_data.size() == 0) break;	//if terminated AND compression is done
+					cache->m_mutexList.lock();
+					if (cache->m_bTerminateThread && cache->m_data.size() == 0) { //if terminated AND compression is done
+						cache->m_mutexList.unlock();
+						break;
+					}
 					if (cache->m_data.size() > 0) {
-						cache->m_mutexList.lock();
-						FrameState fs = cache->m_data.front();
+						FrameState fs = std::move(cache->m_data.front());
 						cache->m_data.pop_front();
 						cache->m_mutexList.unlock();
 
@@ -1903,6 +1928,7 @@ namespace ml {
 						fs.free();
 
 					}
+					else cache->m_mutexList.unlock();
 				}
 			}
 
